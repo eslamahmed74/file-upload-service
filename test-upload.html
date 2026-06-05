@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>S3 Presigned Upload Tester</title>
+  <!-- Google Fonts: Inter & Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --bg-gradient: linear-gradient(135deg, #0b0f19 0%, #111827 100%);
+      --card-bg: rgba(30, 41, 59, 0.45);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --primary: #6366f1; /* Indigo */
+      --primary-hover: #4f46e5;
+      --secondary: #10b981; /* Emerald */
+      --secondary-hover: #059669;
+      --accent: #ec4899; /* Pink */
+      --warning: #f59e0b; /* Amber */
+      --danger: #ef4444; /* Red */
+      --shadow-color: rgba(0, 0, 0, 0.4);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', sans-serif;
+    }
+
+    body {
+      background: var(--bg-gradient);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    /* Ambient background glows */
+    body::before, body::after {
+      content: '';
+      position: absolute;
+      width: 400px;
+      height: 400px;
+      border-radius: 50%;
+      filter: blur(120px);
+      z-index: -1;
+      opacity: 0.15;
+    }
+    body::before {
+      background: var(--primary);
+      top: 10%;
+      left: 10%;
+      animation: float 12s infinite alternate;
+    }
+    body::after {
+      background: var(--accent);
+      bottom: 15%;
+      right: 10%;
+      animation: float 16s infinite alternate-reverse;
+    }
+
+    @keyframes float {
+      0% { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(30px, 30px) scale(1.2); }
+    }
+
+    .container {
+      max-width: 800px;
+      width: 100%;
+      z-index: 1;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    h1 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 2.5rem;
+      font-weight: 800;
+      letter-spacing: -0.025em;
+      background: linear-gradient(to right, #a5b4fc, #6366f1, #f472b6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 0.5rem;
+    }
+
+    header p {
+      color: var(--text-muted);
+      font-size: 1.1rem;
+    }
+
+    /* Config Bar */
+    .config-card {
+      background: var(--card-bg);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 1.25rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 10px 30px -10px var(--shadow-color);
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .config-group {
+      display: flex;
+      flex-direction: column;
+      flex-grow: 1;
+      min-width: 250px;
+    }
+
+    .config-group label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+    }
+
+    .config-input-wrapper {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    input[type="text"] {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--text-main);
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      flex-grow: 1;
+      transition: all 0.3s ease;
+    }
+
+    input[type="text"]:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+    }
+
+    /* Main card */
+    .glass-card {
+      background: var(--card-bg);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      padding: 2.25rem;
+      box-shadow: 0 20px 45px -15px var(--shadow-color);
+      margin-bottom: 1.5rem;
+    }
+
+    /* Dropzone styling */
+    .dropzone-container {
+      border: 2px dashed rgba(255, 255, 255, 0.15);
+      border-radius: 12px;
+      padding: 2.5rem 2rem;
+      text-align: center;
+      background: rgba(15, 23, 42, 0.3);
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .dropzone-container:hover, .dropzone-container.dragover {
+      border-color: var(--primary);
+      background: rgba(99, 102, 241, 0.05);
+      transform: translateY(-2px);
+    }
+
+    .dropzone-icon {
+      width: 64px;
+      height: 64px;
+      background: rgba(99, 102, 241, 0.1);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--primary);
+      transition: all 0.3s ease;
+    }
+
+    .dropzone-container:hover .dropzone-icon {
+      transform: scale(1.1);
+      background: rgba(99, 102, 241, 0.2);
+    }
+
+    .dropzone-text h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+
+    .dropzone-text p {
+      color: var(--text-muted);
+      font-size: 0.875rem;
+    }
+
+    .file-input {
+      display: none;
+    }
+
+    /* File Metadata Card */
+    .file-info-badge {
+      display: none;
+      align-items: center;
+      gap: 1rem;
+      background: rgba(99, 102, 241, 0.08);
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      border-radius: 12px;
+      padding: 1rem;
+      margin-bottom: 2rem;
+      animation: fadeIn 0.4s ease forwards;
+    }
+
+    .file-info-details {
+      flex-grow: 1;
+      min-width: 0;
+    }
+
+    .file-info-name {
+      font-weight: 600;
+      color: var(--text-main);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-size: 0.95rem;
+    }
+
+    .file-info-meta {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 0.25rem;
+      display: flex;
+      gap: 0.75rem;
+    }
+
+    .remove-file-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 0.5rem;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+    }
+
+    .remove-file-btn:hover {
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--danger);
+    }
+
+    /* Steps Layout */
+    .steps-container {
+      display: flex;
+      flex-direction: column;
+      gap: 1.75rem;
+    }
+
+    .step-item {
+      display: flex;
+      gap: 1.25rem;
+      position: relative;
+    }
+
+    .step-item:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      left: 20px;
+      top: 40px;
+      bottom: -20px;
+      width: 2px;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .step-item.active:not(:last-child)::after {
+      background: linear-gradient(to bottom, var(--primary), rgba(255, 255, 255, 0.08));
+    }
+
+    .step-item.completed:not(:last-child)::after {
+      background: var(--secondary);
+    }
+
+    .step-badge {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: var(--text-muted);
+      flex-shrink: 0;
+      transition: all 0.3s ease;
+      z-index: 1;
+    }
+
+    .step-item.active .step-badge {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: white;
+      box-shadow: 0 0 15px rgba(99, 102, 241, 0.45);
+    }
+
+    .step-item.completed .step-badge {
+      background: var(--secondary);
+      border-color: var(--secondary);
+      color: white;
+      box-shadow: 0 0 15px rgba(16, 185, 129, 0.45);
+    }
+
+    .step-content {
+      flex-grow: 1;
+      padding-top: 0.5rem;
+    }
+
+    .step-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.15rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .step-title .status-text {
+      font-size: 0.75rem;
+      font-weight: 500;
+      padding: 0.15rem 0.5rem;
+      border-radius: 9999px;
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-muted);
+    }
+
+    .step-item.active .status-text {
+      background: rgba(99, 102, 241, 0.15);
+      color: #a5b4fc;
+    }
+
+    .step-item.completed .status-text {
+      background: rgba(16, 185, 129, 0.15);
+      color: #a7f3d0;
+    }
+
+    .step-body {
+      display: none;
+      margin-top: 0.75rem;
+      animation: slideDown 0.3s ease forwards;
+    }
+
+    .step-item.active .step-body,
+    .step-item.completed .step-body {
+      display: block;
+    }
+
+    .step-desc {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      line-height: 1.45;
+      margin-bottom: 1rem;
+    }
+
+    /* Buttons */
+    .btn {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 0.75rem 1.25rem;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.9rem;
+    }
+
+    .btn:hover:not(:disabled) {
+      background: var(--primary-hover);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+    }
+
+    .btn:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    .btn:disabled {
+      background: rgba(255, 255, 255, 0.05);
+      color: rgba(255, 255, 255, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: var(--secondary);
+    }
+    .btn-secondary:hover:not(:disabled) {
+      background: var(--secondary-hover);
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+    }
+
+    /* Payload Display */
+    .payload-section {
+      background: rgba(15, 23, 42, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 10px;
+      padding: 1rem;
+      margin-top: 1rem;
+      font-family: 'Fira Code', monospace;
+      font-size: 0.825rem;
+      overflow-x: auto;
+      max-height: 200px;
+      position: relative;
+    }
+
+    .payload-title {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      font-weight: bold;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .payload-content {
+      color: #cbd5e1;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .url-string {
+      color: #38bdf8;
+      word-break: break-all;
+    }
+
+    /* Progress bar */
+    .progress-wrapper {
+      margin-top: 1rem;
+    }
+
+    .progress-info {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-bottom: 0.4rem;
+    }
+
+    .progress-bar-bg {
+      height: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 9999px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(to right, var(--primary), var(--secondary));
+      border-radius: 9999px;
+      transition: width 0.1s ease;
+    }
+
+    /* Console logs */
+    .console-card {
+      background: #090d16;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 16px;
+      box-shadow: 0 15px 35px -10px var(--shadow-color);
+      overflow: hidden;
+    }
+
+    .console-header {
+      background: rgba(255, 255, 255, 0.02);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      padding: 0.75rem 1.25rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .console-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .console-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--secondary);
+      box-shadow: 0 0 8px var(--secondary);
+    }
+
+    .console-actions button {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: color 0.2s ease;
+    }
+
+    .console-actions button:hover {
+      color: var(--text-main);
+    }
+
+    .console-body {
+      padding: 1.25rem;
+      font-family: 'Fira Code', monospace;
+      font-size: 0.8rem;
+      max-height: 250px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .log-line {
+      line-height: 1.5;
+      display: flex;
+      gap: 0.75rem;
+    }
+
+    .log-time {
+      color: rgba(255, 255, 255, 0.25);
+      flex-shrink: 0;
+    }
+
+    .log-content {
+      word-break: break-all;
+    }
+
+    .log-info { color: #38bdf8; }
+    .log-success { color: var(--secondary); }
+    .log-warning { color: var(--warning); }
+    .log-error { color: var(--danger); }
+    .log-network { color: #c084fc; }
+
+    /* Animations */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes slideDown {
+      from { opacity: 0; max-height: 0; overflow: hidden; }
+      to { opacity: 1; max-height: 500px; }
+    }
+
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.25);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <h1>S3 Presigned Upload Lab</h1>
+      <p>Test your file upload microservice workflow interactively</p>
+    </header>
+
+    <!-- Configuration -->
+    <div class="config-card">
+      <div class="config-group">
+        <label for="apiUrl">API Gateway Address</label>
+        <div class="config-input-wrapper">
+          <input type="text" id="apiUrl" value="http://localhost:3000" placeholder="e.g., http://localhost:3000">
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Workspace -->
+    <div class="glass-card">
+      
+      <!-- Step 1 Dropzone / Picker -->
+      <div id="dropzone" class="dropzone-container">
+        <div class="dropzone-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </div>
+        <div class="dropzone-text">
+          <h3>Choose a file or drag it here</h3>
+          <p>Supports any local file type for upload testing</p>
+        </div>
+        <input type="file" id="fileInput" class="file-input">
+      </div>
+
+      <!-- File Metadata Details -->
+      <div id="fileInfo" class="file-info-badge">
+        <div style="color: var(--primary); display: flex; align-items: center; justify-content: center;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+        </div>
+        <div class="file-info-details">
+          <div id="fileName" class="file-info-name">document.pdf</div>
+          <div class="file-info-meta">
+            <span id="fileSize">1.2 MB</span>
+            <span id="fileType">application/pdf</span>
+          </div>
+        </div>
+        <button id="removeFileBtn" class="remove-file-btn" title="Remove File">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <!-- Execution steps -->
+      <div class="steps-container">
+        
+        <!-- Step 1 indicator -->
+        <div id="step1" class="step-item active">
+          <div class="step-badge">1</div>
+          <div class="step-content">
+            <h3 class="step-title">Select Test File <span class="status-text" id="step1Status">Waiting for file...</span></h3>
+          </div>
+        </div>
+
+        <!-- Step 2: Request URL -->
+        <div id="step2" class="step-item">
+          <div class="step-badge">2</div>
+          <div class="step-content">
+            <h3 class="step-title">Generate Presigned URL <span class="status-text" id="step2Status">Pending</span></h3>
+            <div class="step-body">
+              <p class="step-desc">Request an S3 PUT pre-signed URL from the backend server using the file's name and content type.</p>
+              <button id="getPresignedBtn" class="btn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                Get Upload Link
+              </button>
+              
+              <!-- Presigned response payloads -->
+              <div id="presignedPayload" style="display: none;">
+                <div class="payload-section">
+                  <div class="payload-title">API Response (JSON)</div>
+                  <div class="payload-content" id="responseCode">Fetching URL...</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 3: Upload to S3 -->
+        <div id="step3" class="step-item">
+          <div class="step-badge">3</div>
+          <div class="step-content">
+            <h3 class="step-title">Upload File to S3 <span class="status-text" id="step3Status">Pending</span></h3>
+            <div class="step-body">
+              <p class="step-desc">Upload the file directly to S3 by executing a PUT request to the pre-signed URL, using the file content as the request body.</p>
+              <button id="uploadBtn" class="btn btn-secondary" disabled>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Upload to S3
+              </button>
+
+              <!-- Progress bar -->
+              <div id="progressSection" class="progress-wrapper" style="display: none;">
+                <div class="progress-info">
+                  <span id="progressPercent">0%</span>
+                  <span id="progressBytes">0 B / 0 B</span>
+                </div>
+                <div class="progress-bar-bg">
+                  <div id="progressBar" class="progress-bar-fill"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- Logger -->
+    <div class="console-card">
+      <div class="console-header">
+        <div class="console-title">
+          <div class="console-indicator"></div>
+          Activity Log
+        </div>
+        <div class="console-actions">
+          <button id="clearConsoleBtn">Clear</button>
+        </div>
+      </div>
+      <div id="consoleBody" class="console-body">
+        <div class="log-line">
+          <span class="log-time">[00:00:00]</span>
+          <span class="log-content log-info">Console initialized. Please drag and drop or select a file to begin.</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // State management
+    let selectedFile = null;
+    let presignedUrl = null;
+    let uploadXhr = null;
+
+    // DOM Elements
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('fileInput');
+    const fileInfo = document.getElementById('fileInfo');
+    const fileNameEl = document.getElementById('fileName');
+    const fileSizeEl = document.getElementById('fileSize');
+    const fileTypeEl = document.getElementById('fileType');
+    const removeFileBtn = document.getElementById('removeFileBtn');
+    const apiUrlInput = document.getElementById('apiUrl');
+    
+    // Steps
+    const step1 = document.getElementById('step1');
+    const step1Status = document.getElementById('step1Status');
+    const step2 = document.getElementById('step2');
+    const step2Status = document.getElementById('step2Status');
+    const step3 = document.getElementById('step3');
+    const step3Status = document.getElementById('step3Status');
+    
+    // Buttons & Payload
+    const getPresignedBtn = document.getElementById('getPresignedBtn');
+    const presignedPayload = document.getElementById('presignedPayload');
+    const responseCode = document.getElementById('responseCode');
+    const uploadBtn = document.getElementById('uploadBtn');
+    
+    // Progress
+    const progressSection = document.getElementById('progressSection');
+    const progressPercent = document.getElementById('progressPercent');
+    const progressBytes = document.getElementById('progressBytes');
+    const progressBar = document.getElementById('progressBar');
+    
+    // Console
+    const consoleBody = document.getElementById('consoleBody');
+    const clearConsoleBtn = document.getElementById('clearConsoleBtn');
+
+    // Helper: Logging to console UI
+    function log(message, type = 'info') {
+      const now = new Date();
+      const timeStr = now.toTimeString().split(' ')[0];
+      const logLine = document.createElement('div');
+      logLine.className = 'log-line';
+      
+      let typeClass = 'log-info';
+      if (type === 'success') typeClass = 'log-success';
+      if (type === 'warning') typeClass = 'log-warning';
+      if (type === 'error') typeClass = 'log-error';
+      if (type === 'network') typeClass = 'log-network';
+
+      logLine.innerHTML = `
+        <span class="log-time">[${timeStr}]</span>
+        <span class="log-content ${typeClass}">${escapeHtml(message)}</span>
+      `;
+      consoleBody.appendChild(logLine);
+      consoleBody.scrollTop = consoleBody.scrollHeight;
+    }
+
+    function escapeHtml(text) {
+      const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      };
+      return String(text).replace(/[&<>"']/g, function(m) { return map[m]; });
+    }
+
+    // Clear logs
+    clearConsoleBtn.addEventListener('click', () => {
+      consoleBody.innerHTML = '';
+      log('Console cleared.');
+    });
+
+    // Format file sizes
+    function formatBytes(bytes, decimals = 2) {
+      if (bytes === 0) return '0 Bytes';
+      const k = 1024;
+      const dm = decimals < 0 ? 0 : decimals;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    }
+
+    // Step 1: File selection handling
+    dropzone.addEventListener('click', () => fileInput.click());
+
+    dropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropzone.classList.add('dragover');
+    });
+
+    dropzone.addEventListener('dragleave', () => {
+      dropzone.classList.remove('dragover');
+    });
+
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropzone.classList.remove('dragover');
+      if (e.dataTransfer.files.length > 0) {
+        handleFileSelect(e.dataTransfer.files[0]);
+      }
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        handleFileSelect(e.target.files[0]);
+      }
+    });
+
+    function handleFileSelect(file) {
+      selectedFile = file;
+      fileNameEl.textContent = file.name;
+      fileSizeEl.textContent = formatBytes(file.size);
+      fileTypeEl.textContent = file.type || 'unknown type';
+      
+      // Update UI displays
+      dropzone.style.display = 'none';
+      fileInfo.style.display = 'flex';
+      
+      // Update Step 1 state
+      step1.className = 'step-item completed';
+      step1Status.textContent = 'Selected';
+      
+      // Make Step 2 active
+      step2.className = 'step-item active';
+      step2Status.textContent = 'Ready';
+      
+      log(`File selected: ${file.name} (${formatBytes(file.size)})`, 'success');
+      
+      // Reset subsequent steps
+      resetStep2();
+      resetStep3();
+    }
+
+    removeFileBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      selectedFile = null;
+      presignedUrl = null;
+      if (uploadXhr) uploadXhr.abort();
+
+      fileInput.value = '';
+      dropzone.style.display = 'flex';
+      fileInfo.style.display = 'none';
+      
+      // Reset statuses
+      step1.className = 'step-item active';
+      step1Status.textContent = 'Waiting for file...';
+      
+      step2.className = 'step-item';
+      step2Status.textContent = 'Pending';
+      
+      step3.className = 'step-item';
+      step3Status.textContent = 'Pending';
+      
+      log('File removed. Resetting workflow.');
+      resetStep2();
+      resetStep3();
+    });
+
+    function resetStep2() {
+      presignedPayload.style.display = 'none';
+      responseCode.textContent = 'Fetching URL...';
+      presignedUrl = null;
+      getPresignedBtn.disabled = false;
+      getPresignedBtn.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        Get Upload Link
+      `;
+    }
+
+    function resetStep3() {
+      uploadBtn.disabled = true;
+      progressSection.style.display = 'none';
+      progressBar.style.style = '0%';
+      progressPercent.textContent = '0%';
+      progressBytes.textContent = '0 B / 0 B';
+      if (uploadXhr) {
+        uploadXhr.abort();
+        uploadXhr = null;
+      }
+    }
+
+    // Step 2: Call Presigned URL Endpoint
+    getPresignedBtn.addEventListener('click', async () => {
+      if (!selectedFile) {
+        log('No file selected. Please select a file first.', 'warning');
+        return;
+      }
+
+      const gatewayUrl = apiUrlInput.value.trim();
+      if (!gatewayUrl) {
+        log('API gateway URL cannot be empty.', 'warning');
+        return;
+      }
+
+      getPresignedBtn.disabled = true;
+      getPresignedBtn.textContent = 'Requesting URL...';
+      step2Status.textContent = 'Requesting...';
+      
+      const payload = {
+        fileName: selectedFile.name,
+        contentType: selectedFile.type || 'application/octet-stream'
+      };
+
+      const requestUrl = `${gatewayUrl}/files/presigned-url`;
+      log(`Sending POST request to ${requestUrl}`, 'network');
+      log(`Payload: ${JSON.stringify(payload)}`, 'info');
+
+      try {
+        const response = await fetch(requestUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP Error Status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        log(`Response received with status ${response.status}`, 'success');
+
+        presignedUrl = data.url;
+        if (!presignedUrl) {
+          throw new Error('API response did not return a "url" property.');
+        }
+
+        // Show Response payload
+        presignedPayload.style.display = 'block';
+        responseCode.innerHTML = JSON.stringify(data, null, 2).replace(
+          data.url, 
+          `<span class="url-string">${escapeHtml(data.url)}</span>`
+        );
+
+        // Update Step 2 State
+        step2.className = 'step-item completed';
+        step2Status.textContent = 'Generated';
+        log(`Presigned URL generated successfully. Valid for 15 minutes.`, 'success');
+
+        // Make Step 3 active
+        step3.className = 'step-item active';
+        step3Status.textContent = 'Ready';
+        uploadBtn.disabled = false;
+
+      } catch (err) {
+        log(`Request failed: ${err.message}`, 'error');
+        log(`Make sure your backend is running on ${gatewayUrl} and CORS is enabled!`, 'warning');
+        step2Status.textContent = 'Failed';
+        getPresignedBtn.disabled = false;
+        getPresignedBtn.textContent = 'Try Again';
+      }
+    });
+
+    // Step 3: Put File to S3
+    uploadBtn.addEventListener('click', () => {
+      if (!presignedUrl) {
+        log('No presigned URL found. Please complete Step 2.', 'warning');
+        return;
+      }
+
+      uploadBtn.disabled = true;
+      step3Status.textContent = 'Uploading...';
+      progressSection.style.display = 'block';
+      progressBar.style.width = '0%';
+
+      log(`Initiating PUT request to S3 Presigned URL`, 'network');
+      log(`Target URL: ${presignedUrl.split('?')[0]}...`, 'info');
+      log(`Setting headers: Content-Type = ${selectedFile.type || 'application/octet-stream'}`, 'info');
+
+      uploadXhr = new XMLHttpRequest();
+      
+      // Event listener for progress
+      uploadXhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const percentComplete = (e.loaded / e.total) * 100;
+          progressBar.style.width = `${percentComplete}%`;
+          progressPercent.textContent = `${Math.round(percentComplete)}%`;
+          progressBytes.textContent = `${formatBytes(e.loaded)} / ${formatBytes(e.total)}`;
+        }
+      });
+
+      // Event listener for completion
+      uploadXhr.addEventListener('load', () => {
+        if (uploadXhr.status >= 200 && uploadXhr.status < 300) {
+          log(`S3 upload completed. Status: ${uploadXhr.status} ${uploadXhr.statusText}`, 'success');
+          step3.className = 'step-item completed';
+          step3Status.textContent = 'Completed';
+          log(`File "${selectedFile.name}" has been successfully uploaded directly to S3.`, 'success');
+        } else {
+          log(`S3 upload failed with Status: ${uploadXhr.status} ${uploadXhr.statusText}`, 'error');
+          log(`Response content: ${uploadXhr.responseText}`, 'error');
+          log(`Tip: Verify S3 CORS Configuration allows PUT method and headers.`, 'warning');
+          step3Status.textContent = 'Failed';
+          uploadBtn.disabled = false;
+        }
+      });
+
+      // Event listener for error
+      uploadXhr.addEventListener('error', () => {
+        log(`S3 upload failed due to network or CORS error.`, 'error');
+        log(`Please check the browser console developer tools (F12) for detailed CORS issues.`, 'warning');
+        step3Status.textContent = 'Network Error';
+        uploadBtn.disabled = false;
+      });
+
+      // Open and configuration
+      uploadXhr.open('PUT', presignedUrl);
+      
+      // IMPORTANT: S3 put presigned url requires the exact Content-Type used in signature creation
+      uploadXhr.setRequestHeader('Content-Type', selectedFile.type || 'application/octet-stream');
+
+      // Send the binary data
+      uploadXhr.send(selectedFile);
+    });
+
+  </script>
+</body>
+</html>
