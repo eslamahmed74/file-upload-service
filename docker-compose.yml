@@ -4,7 +4,7 @@ services:
   db: 
     image: postgres:14.23-trixie
     container_name: file-upload-db 
-    restart: always 
+    restart: unless-stopped 
     environment: 
       POSTGRES_USER: ${DB_USERNAME}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
