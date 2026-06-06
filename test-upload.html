@@ -428,6 +428,14 @@
       box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
     }
 
+    .btn-accent {
+      background: var(--accent);
+    }
+    .btn-accent:hover:not(:disabled) {
+      background: #db2777;
+      box-shadow: 0 4px 12px rgba(236, 72, 153, 0.25);
+    }
+
     /* Payload Display */
     .payload-section {
       background: rgba(15, 23, 42, 0.5);
@@ -712,6 +720,29 @@
           </div>
         </div>
 
+        <!-- Step 4: Register File in DB -->
+        <div id="step4" class="step-item">
+          <div class="step-badge">4</div>
+          <div class="step-content">
+            <h3 class="step-title">Register File in Database <span class="status-text" id="step4Status">Pending</span></h3>
+            <div class="step-body">
+              <p class="step-desc">Notify the backend server that the upload completed successfully, passing the unique file key to register and save it in the database.</p>
+              <button id="registerBtn" class="btn btn-accent" disabled>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                Register File
+              </button>
+
+              <!-- Register response payload -->
+              <div id="registerPayload" style="display: none;">
+                <div class="payload-section">
+                  <div class="payload-title">API Response (JSON)</div>
+                  <div class="payload-content" id="registerResponseCode">Registering...</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
 
     </div>
@@ -760,12 +791,17 @@
     const step2Status = document.getElementById('step2Status');
     const step3 = document.getElementById('step3');
     const step3Status = document.getElementById('step3Status');
+    const step4 = document.getElementById('step4');
+    const step4Status = document.getElementById('step4Status');
     
     // Buttons & Payload
     const getPresignedBtn = document.getElementById('getPresignedBtn');
     const presignedPayload = document.getElementById('presignedPayload');
     const responseCode = document.getElementById('responseCode');
     const uploadBtn = document.getElementById('uploadBtn');
+    const registerBtn = document.getElementById('registerBtn');
+    const registerPayload = document.getElementById('registerPayload');
+    const registerResponseCode = document.getElementById('registerResponseCode');
     
     // Progress
     const progressSection = document.getElementById('progressSection');
@@ -874,6 +910,7 @@
       // Reset subsequent steps
       resetStep2();
       resetStep3();
+      resetStep4();
     }
 
     removeFileBtn.addEventListener('click', (e) => {
@@ -896,9 +933,13 @@
       step3.className = 'step-item';
       step3Status.textContent = 'Pending';
       
+      step4.className = 'step-item';
+      step4Status.textContent = 'Pending';
+      
       log('File removed. Resetting workflow.');
       resetStep2();
       resetStep3();
+      resetStep4();
     });
 
     function resetStep2() {
@@ -915,13 +956,25 @@
     function resetStep3() {
       uploadBtn.disabled = true;
       progressSection.style.display = 'none';
-      progressBar.style.style = '0%';
+      progressBar.style.width = '0%';
       progressPercent.textContent = '0%';
       progressBytes.textContent = '0 B / 0 B';
       if (uploadXhr) {
         uploadXhr.abort();
         uploadXhr = null;
       }
+    }
+
+    function resetStep4() {
+      registerBtn.disabled = true;
+      registerBtn.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+        Register File
+      `;
+      registerPayload.style.display = 'none';
+      registerResponseCode.textContent = 'Registering...';
+      step4.className = 'step-item';
+      step4Status.textContent = 'Pending';
     }
 
     // Step 2: Call Presigned URL Endpoint
@@ -1032,6 +1085,9 @@
           step3.className = 'step-item completed';
           step3Status.textContent = 'Completed';
           log(`File "${selectedFile.name}" has been successfully uploaded directly to S3.`, 'success');
+          
+          // Automatically register file in DB
+          registerFileInDb();
         } else {
           log(`S3 upload failed with Status: ${uploadXhr.status} ${uploadXhr.statusText}`, 'error');
           log(`Response content: ${uploadXhr.responseText}`, 'error');
@@ -1057,6 +1113,101 @@
 
       // Send the binary data
       uploadXhr.send(selectedFile);
+    });
+
+    // Step 4: Register File in DB (extracted to reusable helper function)
+    async function registerFileInDb() {
+      if (!presignedUrl) {
+        log('No presigned URL found to extract key. Please complete Step 2.', 'warning');
+        return;
+      }
+
+      const gatewayUrl = apiUrlInput.value.trim();
+      if (!gatewayUrl) {
+        log('API gateway URL cannot be empty.', 'warning');
+        return;
+      }
+
+      // Extract the file key from the pre-signed URL
+      let fileKey = null;
+      try {
+        const urlObj = new URL(presignedUrl);
+        const segments = urlObj.pathname.split('/').filter(Boolean);
+        if (segments.length > 0) {
+          const lastSegment = segments[segments.length - 1];
+          fileKey = decodeURIComponent(lastSegment);
+        }
+      } catch (e) {
+        log(`Failed to parse file key from pre-signed URL: ${e.message}`, 'error');
+        return;
+      }
+
+      if (!fileKey) {
+        log('Failed to extract file key from the pre-signed URL.', 'error');
+        return;
+      }
+
+      // Activate Step 4 UI
+      step4.className = 'step-item active';
+      step4Status.textContent = 'Registering...';
+      registerBtn.disabled = true;
+      registerBtn.textContent = 'Registering...';
+      
+      const payload = {
+        fileKey: fileKey
+      };
+
+      const requestUrl = `${gatewayUrl}/files/uploaded`;
+      log(`Sending POST request to ${requestUrl}`, 'network');
+      log(`Payload: ${JSON.stringify(payload)}`, 'info');
+
+      try {
+        const response = await fetch(requestUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP Error Status: ${response.status}`);
+        }
+
+        // The response body might be empty, check if it's JSON or empty
+        let responseData = null;
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          responseData = await response.json();
+        } else {
+          await response.text(); // Consume response body
+        }
+
+        log(`Response received with status ${response.status}`, 'success');
+
+        // Show Response payload
+        registerPayload.style.display = 'block';
+        registerResponseCode.innerHTML = responseData 
+          ? JSON.stringify(responseData, null, 2) 
+          : 'Success (No content returned)';
+
+        // Update Step 4 State
+        step4.className = 'step-item completed';
+        step4Status.textContent = 'Completed';
+        registerBtn.textContent = 'Registered';
+        log(`File registration in DB succeeded! fileKey: ${fileKey}`, 'success');
+
+      } catch (err) {
+        log(`Registration failed: ${err.message}`, 'error');
+        step4Status.textContent = 'Failed';
+        registerBtn.disabled = false;
+        registerBtn.textContent = 'Try Again';
+      }
+    }
+
+    // Allow manual retry of Step 4 if needed
+    registerBtn.addEventListener('click', () => {
+      registerFileInDb();
     });
 
   </script>
