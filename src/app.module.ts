@@ -23,7 +23,7 @@ import { KafkaModule } from './kafka/kafka.module';
       database: process.env.DB_DATABASE,
       autoLoadEntities: true,
       synchronize: true,
-      logging: true,
+      logging: true
     }),
     KafkaModule,
   ],
